@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數位票券交易 - 完整動作代碼版</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f8;
+            --card-bg: #ffffff;
+            --text-primary: #1c1e21;
+            --text-secondary: #606770;
+            --border-radius: 12px;
+            
+            /* 語意顏色 */
+            --c-issue: #28a745;   /* 發行 - 綠 */
+            --c-trash: #dc3545;   /* 刪除/退貨 - 紅 */
+            --c-gift: #007bff;    /* 轉贈 - 藍 */
+            --c-redeem: #ffc107;  /* 核銷 - 黃 (文字用深色) */
+            --c-expired: #6f42c1; /* 過期 - 紫 */
+            --c-trust: #17a2b8;   /* 信託 - 青 */
+            --c-action: #343a40;  /* 動作代碼專用 - 深灰 */
+        }
+
+        body {
+            font-family: "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            padding: 40px 20px;
+            margin: 0;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 40px;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            border-top: 5px solid #ccc;
+            transition: transform 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+        }
+
+        .card-header {
+            padding: 15px 20px;
+            font-weight: 700;
+            font-size: 1.1em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            background-color: #fdfdfd;
+        }
+
+        .card-body {
+            padding: 20px;
+            flex-grow: 1;
+        }
+
+        /* 票券區塊 */
+        .ticket-block {
+            background-color: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        .ticket-title {
+            font-size: 0.9em;
+            color: var(--text-secondary);
+            font-weight: bold;
+            margin-bottom: 12px;
+            display: block;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        /* 資料行 */
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+            align-items: center;
+        }
+
+        .label {
+            color: #777;
+            font-size: 0.9em;
+        }
+
+        .value {
+            font-weight: 600;
+            text-align: right;
+        }
+
+        /* 動作代碼專用樣式 */
+        .action-row {
+            background-color: #f1f3f5;
+            padding: 6px 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border-left: 4px solid var(--c-action);
+        }
+        
+        .action-row .label {
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .action-row .value {
+            color: var(--c-action);
+            font-family: monospace;
+            font-size: 1.1em;
+            font-weight: 800;
+        }
+
+        /* 信託強調 */
+        .trust-row .label {
+            color: var(--c-trust);
+        }
+        .trust-row .value {
+            color: var(--c-trust);
+        }
+
+        /* 箭頭 */
+        .flow-arrow {
+            text-align: center;
+            font-size: 1.5rem;
+            color: #ced4da;
+            margin: 5px 0;
+            line-height: 1;
+        }
+
+        /* 狀態Badge */
+        .badge {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            color: white;
+            font-weight: normal;
+        }
+
+        /* 顏色定義 */
+        .bd-issue { border-top-color: var(--c-issue); }
+        .bg-issue { background-color: var(--c-issue); }
+        .val-issue { color: var(--c-issue); }
+
+        .bd-gift { border-top-color: var(--c-gift); }
+        .bg-gift { background-color: var(--c-gift); }
+        .val-gift { color: var(--c-gift); }
+
+        .bd-redeem { border-top-color: var(--c-redeem); }
+        .bg-redeem { background-color: var(--c-redeem); color: #856404; }
+        .val-redeem { color: #856404; }
+
+        .bd-trash { border-top-color: var(--c-trash); }
+        .bg-trash { background-color: var(--c-trash); }
+        .val-trash { color: var(--c-trash); }
+
+        .bd-expired { border-top-color: var(--c-expired); }
+        .bg-expired { background-color: var(--c-expired); }
+        .val-expired { color: var(--c-expired); }
+
+        /* 特殊備註 */
+        .remark {
+            margin-top: 8px;
+            font-size: 0.8em;
+            color: #666;
+            font-style: italic;
+            border-top: 1px dashed #eee;
+            padding-top: 5px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>數位票券交易 - 動作代碼全覽表</h1>
+
+    <div class="grid-container">
+
+        <!-- 1. 新增/發行 -->
+        <div class="card bd-issue">
+            <div class="card-header">
+                T01017 API取券
+                <span class="badge bg-issue">ISSUE</span>
+            </div>
+            <div class="card-body">
+                <div class="ticket-block">
+                    <span class="ticket-title">🏷️ 新券 (New)</span>
+                    <!-- 動作代碼 -->
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">ISSUE</span>
+                    </div>
+                    <!-- 內容 -->
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-issue">正值 (+)</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value">正值 (+)</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">1</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 轉贈 -->
+        <div class="card bd-gift">
+            <div class="card-header">
+                T01013 / 預約轉贈
+                <span class="badge bg-gift">GIFT</span>
+            </div>
+            <div class="card-body">
+                <!-- 舊券 -->
+                <div class="ticket-block" style="background:#f8f9fa;">
+                    <span class="ticket-title">📤 舊券 (Sender)</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">GIFT</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">2</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">⬇</div>
+
+                <!-- 新券 -->
+                <div class="ticket-block">
+                    <span class="ticket-title">📥 新券 (Receiver)</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">GIFT</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-gift">正值 (等於舊券)</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-gift">正值 (等於舊券)</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">1</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 後台換券 -->
+        <div class="card bd-trash">
+            <div class="card-header">
+                後台換券
+                <span class="badge" style="background:#6c757d">EXCHANGE</span>
+            </div>
+            <div class="card-body">
+                <!-- 舊券 -->
+                <div class="ticket-block" style="background:#f8f9fa;">
+                    <span class="ticket-title">🗑️ 舊券 (Old)</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">TRASH</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">2</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">⬇</div>
+
+                <!-- 新券 -->
+                <div class="ticket-block">
+                    <span class="ticket-title">✨ 新券 (New)</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">ISSUE</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-issue">正值 (+)</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-issue">正值 (+)</span>
+                    </div>
+                    <div class="remark">註：信託價值可能低於舊券</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 核銷 -->
+        <div class="card bd-redeem">
+            <div class="card-header">
+                T01004 API核銷
+                <span class="badge bg-redeem">REDEEM</span>
+            </div>
+            <div class="card-body">
+                <div class="ticket-block">
+                    <span class="ticket-title">🎫 使用券</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">REDEEM</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-redeem">負值 (扣除)</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-redeem">負值 (依比例)</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">1(未完) / 2(用完)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. 取消核銷 -->
+        <div class="card bd-redeem">
+            <div class="card-header">
+                R01004 取消核銷
+                <span class="badge bg-redeem">RED_CANCEL</span>
+            </div>
+            <div class="card-body">
+                <div class="ticket-block">
+                    <span class="ticket-title">🔄 取消券</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">RED_CANCEL</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-issue">正值 (加回)</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value" style="color:red; font-weight:bold;">不還信託</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">2變1 / 1維持1</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. 信託到期 -->
+        <div class="card bd-expired">
+            <div class="card-header">
+                排程處理信託到期
+                <span class="badge bg-expired">TRUST_EXP</span>
+            </div>
+            <div class="card-body">
+                <div class="ticket-block">
+                    <span class="ticket-title">🏦 信託過期券</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">TRUST_EXP</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value">不動</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-trash" style="font-weight:bold;">歸零</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">不動</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. 單券退貨 R01017 -->
+        <div class="card bd-trash">
+            <div class="card-header">
+                R01017 單券退貨
+                <span class="badge bg-trash">REVERSAL</span>
+            </div>
+            <div class="card-body">
+                <div class="ticket-block">
+                    <span class="ticket-title">🔙 單張票券</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">REVERSAL</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">MODE</span>
+                        <span class="value">REVERSAL</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8. 訂單退貨 R02017 -->
+        <div class="card bd-trash">
+            <div class="card-header">
+                R02017 訂單退貨
+                <span class="badge bg-trash">TRASH</span>
+            </div>
+            <div class="card-body">
+                <div class="ticket-block">
+                    <span class="ticket-title">📦 整筆訂單</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">TRASH</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">MODE</span>
+                        <span class="value">TRASH</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 9. 過期退回購買者 -->
+        <div class="card bd-expired">
+            <div class="card-header">
+                逾期退回 (受贈券)
+                <span class="badge bg-expired">EXP_RETURN</span>
+            </div>
+            <div class="card-body">
+                <!-- 過期券 -->
+                <div class="ticket-block" style="background:#f8f9fa;">
+                    <span class="ticket-title">⌛ 過期券 (受贈者)</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">EXP_RETURN</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-trash">歸零</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">3</span>
+                    </div>
+                </div>
+
+                <div class="flow-arrow">⬇</div>
+
+                <!-- 原購買券 -->
+                <div class="ticket-block">
+                    <span class="ticket-title">🔙 原購買券 (Buyer)</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">EXP_RETURN</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value val-issue">正值 (等於過期券)</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value val-issue">正值 (等於過期券)</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">4變成3</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 10. 一般過期 -->
+        <div class="card bd-expired">
+            <div class="card-header">
+                一般過期 (非受贈)
+                <span class="badge bg-expired">EXPIRED</span>
+            </div>
+            <div class="card-body">
+                <div class="ticket-block">
+                    <span class="ticket-title">⌛ 過期券</span>
+                    <div class="data-row action-row">
+                        <span class="label">動作 (Action)</span>
+                        <span class="value">EXPIRED</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">票券餘額</span>
+                        <span class="value">不動</span>
+                    </div>
+                    <div class="data-row trust-row">
+                        <span class="label">信託餘額</span>
+                        <span class="value">不動</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="label">狀態紀錄</span>
+                        <span class="value">3</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>
