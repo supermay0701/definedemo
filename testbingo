@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Bingo 量化策略回測系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; }
+        .panel { background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        button { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        button:hover { background: #2563eb; }
+        input { padding: 8px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; width: 80px; }
+        .stats { display: flex; gap: 20px; margin-top: 15px; font-size: 1.1em; }
+        .hot { color: #ef4444; } .cold { color: #3b82f6; } .avg { color: #10b981; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Bingo 策略回測引擎 (Edge Compute)</h2>
+        <div class="panel">
+            <label>API 抓取筆數: <input type="number" id="fetchLimit" value="200"></label>
+            <label style="margin-left: 20px;">滑動窗口大小 (期): <input type="number" id="windowSize" value="10"></label>
+            <button style="margin-left: 20px;" onclick="runBacktest()">執行運算與回測</button>
+            <p id="status" style="color: #94a3b8; font-size: 0.9em;">等待指令...</p>
+        </div>
+        
+        <div class="panel">
+            <canvas id="backtestChart" width="1000" height="400"></canvas>
+            <div class="stats" id="finalStats"></div>
+        </div>
+    </div>
+
+    <script>
+        // 替換為你的 GAS 網頁應用程式 URL
+        const API_URL = "https://script.google.com/macros/s/AKfycbxmeB5viK8rZz1UgAHu1BwjKISTjOM_TiNddi00sl6SMzfKIT0hRz2HPtprld942VF3/exec"; 
+        let chartInstance = null;
+
+        async function runBacktest() {
+            const statusEl = document.getElementById('status');
+            const limit = document.getElementById('fetchLimit').value;
+            const windowSize = parseInt(document.getElementById('windowSize').value);
+            
+            statusEl.innerText = "正在從 Google Sheet 提取資料...";
+            try {
+                const response = await fetch(`${API_URL}?limit=${limit}`);
+                const resJson = await response.json();
+                
+                if (!resJson.success) throw new Error(resJson.error);
+                const data = resJson.data;
+                
+                if (data.length <= windowSize) {
+                    statusEl.innerText = "資料量不足以支撐該窗口大小";
+                    return;
+                }
+
+                statusEl.innerText = `成功載入 ${data.length} 筆資料。開始執行邊緣運算...`;
+                executeStrategies(data, windowSize);
+                
+            } catch (error) {
+                statusEl.innerText = `錯誤: ${error.message}`;
+            }
+        }
+
+        function executeStrategies(data, windowSize) {
+            let labels = [];
+            let hotCumulativeHits = [];
+            let coldCumulativeHits = [];
+            let avgCumulativeHits = [];
+            
+            let hits = { hot: 0, cold: 0, avg: 0 };
+            const TOTAL_NUMBERS = 80;
+            const DRAW_COUNT = 20;
+            
+            // 滑動窗口回測 (Sliding Window O(N) 遍歷)
+            for (let i = windowSize; i < data.length; i++) {
+                // 擷取過去 windowSize 期的資料作為觀察樣本
+                const historyWindow = data.slice(i - windowSize, i);
+                const targetDraw = new Set(data[i].numbers); // 本期實際開獎號碼
+                labels.push(data[i].id);
+
+                // 計算歷史頻次
+                let freqMap = {};
+                for (let n = 1; n <= TOTAL_NUMBERS; n++) freqMap[n] = 0;
+                
+                historyWindow.forEach(row => {
+                    row.numbers.forEach(num => {
+                        if (freqMap[num] !== undefined) freqMap[num]++;
+                    });
+                });
+
+                // 策略 1: 動量 (熱號 Top 5)
+                const hotPred = Object.keys(freqMap)
+                    .sort((a, b) => freqMap[b] - freqMap[a])
+                    .slice(0, 5).map(Number);
+                
+                // 策略 2: 均值回歸 (冷號 Bottom 5，排除0次)
+                const expectedCount = windowSize * (DRAW_COUNT / TOTAL_NUMBERS);
+                const coldPred = Object.keys(freqMap)
+                    .filter(k => freqMap[k] > 0 && freqMap[k] < expectedCount * 0.8)
+                    .sort((a, b) => freqMap[a] - freqMap[b])
+                    .slice(0, 5).map(Number);
+                
+                // 策略 3: 大數法則 (最貼近期望值 Top 5)
+                const avgPred = Object.keys(freqMap)
+                    .sort((a, b) => Math.abs(freqMap[a] - expectedCount) - Math.abs(freqMap[b] - expectedCount))
+                    .slice(0, 5).map(Number);
+
+                // 計算命中數並累加
+                hits.hot += hotPred.filter(n => targetDraw.has(n)).length;
+                hits.cold += coldPred.filter(n => targetDraw.has(n)).length;
+                hits.avg += avgPred.filter(n => targetDraw.has(n)).length;
+
+                hotCumulativeHits.push(hits.hot);
+                coldCumulativeHits.push(hits.cold);
+                avgCumulativeHits.push(hits.avg);
+            }
+
+            // 更新 UI 統計
+            const totalPredictions = (data.length - windowSize) * 5; // 每次預測5個號碼
+            document.getElementById('finalStats').innerHTML = `
+                <span class="hot">🔥 動量(熱) 命中率: ${((hits.hot / totalPredictions)*100).toFixed(2)}% (${hits.hot}/${totalPredictions})</span>
+                <span class="cold">❄️ 均值(冷) 命中率: ${((hits.cold / totalPredictions)*100).toFixed(2)}% (${hits.cold}/${totalPredictions})</span>
+                <span class="avg">⚖️ 大數(平均) 命中率: ${((hits.avg / totalPredictions)*100).toFixed(2)}% (${hits.avg}/${totalPredictions})</span>
+            `;
+            document.getElementById('status').innerText = "回測完成";
+
+            renderChart(labels, hotCumulativeHits, coldCumulativeHits, avgCumulativeHits);
+        }
+
+        function renderChart(labels, hotData, coldData, avgData) {
+            const ctx = document.getElementById('backtestChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+            
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: '🔥 動量策略累積命中', data: hotData, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 },
+                        { label: '❄️ 均值回歸累積命中', data: coldData, borderColor: '#3b82f6', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 },
+                        { label: '⚖️ 大數法則累積命中', data: avgData, borderColor: '#10b981', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { display: true, title: { display: true, text: '期數 (時間推進)', color: '#94a3b8' }, ticks: { color: '#94a3b8' } },
+                        y: { display: true, title: { display: true, text: '累積命中球數', color: '#94a3b8' }, ticks: { color: '#94a3b8' } }
+                    },
+                    plugins: { legend: { labels: { color: '#f8fafc' } } }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
