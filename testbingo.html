@@ -591,6 +591,29 @@
         // 預設隱藏的實驗策略（點擊圖例可開啟）
         const HIDDEN_BY_DEFAULT = ['cold', 'overdue', 'antiMarkov', 'prime', 'fibonacci', 'tailDigit', 'dragonTiger'];
 
+        // 自訂圖例：用實心/空心圓圈取代刪除線
+        function legendConfig() {
+            return {
+                labels: {
+                    usePointStyle: true, pointStyle: 'circle', padding: 15,
+                    generateLabels: function(chart) {
+                        return chart.data.datasets.map((ds, i) => ({
+                            text: ds.label, index: i, pointStyle: 'circle',
+                            fillStyle: chart.isDatasetVisible(i) ? ds.borderColor : 'transparent',
+                            strokeStyle: ds.borderColor, lineWidth: 2,
+                            fontColor: chart.isDatasetVisible(i) ? '#f8fafc' : '#64748b',
+                            hidden: false
+                        }));
+                    }
+                },
+                onClick: function(e, legendItem, legend) {
+                    const ci = legend.chart;
+                    ci.setDatasetVisibility(legendItem.index, !ci.isDatasetVisible(legendItem.index));
+                    ci.update();
+                }
+            };
+        }
+
         function renderHitChart(labels, trackers) {
             const ctx = document.getElementById('hitChart').getContext('2d');
             if (hitChartInstance) hitChartInstance.destroy();
@@ -608,7 +631,7 @@
                 type: 'line', data: { labels, datasets },
                 options: { responsive: true, interaction: { mode: 'index', intersect: false },
                     scales: { x: { ticks: { color: '#94a3b8', maxTicksLimit: 15 } }, y: { ticks: { color: '#94a3b8' } } },
-                    plugins: { legend: { labels: { color: '#f8fafc', usePointStyle: true, padding: 15 } } }
+                    plugins: { legend: legendConfig() }
                 }
             });
         }
@@ -630,7 +653,7 @@
                 type: 'line', data: { labels, datasets },
                 options: { responsive: true, interaction: { mode: 'index', intersect: false },
                     scales: { x: { ticks: { color: '#94a3b8', maxTicksLimit: 15 } }, y: { title: { display: true, text: '淨獲利 (NTD)', color: '#94a3b8' }, ticks: { color: '#94a3b8' } } },
-                    plugins: { legend: { labels: { color: '#f8fafc', usePointStyle: true, padding: 15 } } }
+                    plugins: { legend: legendConfig() }
                 }
             });
         }
