@@ -405,6 +405,22 @@
             });
         }
 
+        function getBounceRank(history) {
+            let lastSeen = {}, prevLastSeen = {};
+            for (let n = 1; n <= 80; n++) { lastSeen[n] = -999; prevLastSeen[n] = -999; }
+            const len = history.length;
+            for (let i = 0; i < len; i++) {
+                history[i].numbers.forEach(n => { prevLastSeen[n] = lastSeen[n]; lastSeen[n] = i; });
+            }
+            let scores = {};
+            for (let n = 1; n <= 80; n++) {
+                const gap = lastSeen[n] - prevLastSeen[n];
+                const recency = len - 1 - lastSeen[n];
+                scores[n] = gap * (recency <= 2 ? (3 - recency) : 0);
+            }
+            return Array.from({length: 80}, (_, i) => i + 1).sort((a, b) => scores[b] - scores[a]);
+        }
+
         // --- 策略註冊表 ---
         const STRATEGIES = [
             { id: 'markov', name: '🔗 拖牌機率', color: '#f59e0b', light: '#fcd34d',
@@ -429,6 +445,8 @@
               desc: '趨勢跟蹤：追蹤近20期哪個尾數(個位數)最熱門', predict: (h,c) => getTailDigitRank(h) },
             { id: 'dragonTiger', name: '🐉 龍虎翻轉', color: '#fb923c', light: '#fed7aa',
               desc: '大小均值回歸：近10期高號多→押低號，反之亦然', predict: (h,c) => getDragonTigerRank(h) },
+            { id: 'bounce', name: '🏓 彈跳反攻', color: '#e879f9', light: '#f0abfc',
+              desc: '沉寂許久突然現身的號碼，捕捉反彈動能', predict: (h,c) => getBounceRank(h) },
             { id: 'random', name: '🎲 亂數基準', color: '#475569', light: '#94a3b8', isRandom: true,
               desc: '純隨機對照基準線',
               predict: () => { let r=[]; while(r.length<80){let n=Math.floor(Math.random()*80)+1; if(!r.includes(n))r.push(n);} return r; } }
@@ -564,7 +582,7 @@
             document.getElementById('strategyTableBody').innerHTML = tableHTML;
             
             renderPayoutTable(currentStarTarget, isBonusMode);
-            document.getElementById('status').innerText = "✅ 12 策略矩陣運算與損益模擬完成！";
+            document.getElementById('status').innerText = "✅ 13 策略矩陣運算與損益模擬完成！";
 
             renderHitChart(labels, trackers);
             renderPnlChart(labels, trackers);
