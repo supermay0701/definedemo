@@ -463,6 +463,14 @@
             const limit = days * 205; 
             statusEl.innerText = `⏳ 提取雲端數據中...`;
             document.getElementById('predictionPanel').style.display = 'none';
+            document.getElementById('predictionCards').innerHTML = '';
+            document.getElementById('hitStats').innerHTML = '';
+            document.getElementById('strategyTableBody').innerHTML = '<tr><td colspan="8" style="text-align:center; color: var(--text-muted);">運算中...</td></tr>';
+            document.getElementById('pnlRounds').innerText = '-';
+            document.getElementById('pnlStars').innerText = '-';
+            document.getElementById('pnlBonus').innerHTML = '-';
+            if (hitChartInstance) { hitChartInstance.destroy(); hitChartInstance = null; }
+            if (pnlChartInstance) { pnlChartInstance.destroy(); pnlChartInstance = null; }
 
             try {
                 const response = await fetch(`${API_URL}?limit=${limit}`);
